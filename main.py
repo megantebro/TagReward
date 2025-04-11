@@ -1,11 +1,11 @@
 import discord
 from discord import app_commands
 import databasemanager
-from reward import RewardType
 from discord.ext import tasks
 import json
 import os
-
+from server_money import ServerMoney
+import threading
 def init_config():
     # config.json が存在しない場合
     CONFIG_FILE = "config.json"
@@ -82,11 +82,10 @@ async def check_reward_users(interaction: discord.Interaction):
 
     await interaction.followup.send(response,ephemeral=True)
 
-@tree.command(name="set_reward_keyward", description="ユーザーが報酬を受け取るために自己紹介に書く文言を指定します")
+@tree.command(name="set_reward_keyward", description="報酬について設定します")
 async def set_keyward(
     interaction: discord.Interaction,
     keyward: str,
-    reward_type: RewardType,
     reward_value: int = None,
     reward_roll: discord.Role = None
 ):
@@ -95,34 +94,14 @@ async def set_keyward(
         await interaction.response.send_message("タグが入力されていません。プロフィールに書いてもらいたい文言を入力してください。", ephemeral=True)
         return
 
-    if reward_type is None:
-        await interaction.response.send_message("報酬タイプを選んでください。", ephemeral=True)
-        return
-
-    if reward_type == RewardType.ROLE:
-        if not reward_roll:
-            await interaction.response.send_message("ロールを入力してください。", ephemeral=True)
-            return
-        reward_value = None  # ロールタイプなら reward_value は不要にしておく
-
-    elif reward_type == RewardType.SERVER_MONEY:
-        if reward_value is None:
-            await interaction.response.send_message("金額を指定してください。", ephemeral=True)
-            return
-        reward_roll = None  # 通貨タイプならロールは使わない
-
-        # 将来的に実装予定ならコメントでも明示しよう
-        await interaction.response.send_message("この機能は現在実装されていません。", ephemeral=True)
-        return
 
     # --- データ登録処理 ---
     guild_id = interaction.guild_id
     roll_id = reward_roll.id if reward_roll else None
 
-    await db_manager.add_reward_keyward(
+    await db_manager.set_reward_keyward(
         guild_id=guild_id,
         keyward=keyward,
-        reward_type=reward_type,
         reward_value=reward_value,
         roll_id=roll_id
     )
@@ -135,7 +114,7 @@ async def test_check_user_status(interaction:discord.Interaction):
     await interaction.response.send_message("処理が実行されました")
 
 
-@tasks.loop(minutes=10)
+@tasks.loop(hours=12)
 async def check_user_status_loop():
     await check_user_status()
 
@@ -144,9 +123,11 @@ async def check_user_status():
     for guild in client.guilds:
         data = await db_manager.get_keyward_and_rewards_by_guild(guild_id=guild.id)
         if not data:return
-        if data["reward_type"] == RewardType.ROLE:
+
+        matched_user_ids = get_matched_users(guild.members,data["keyward"])
+
+        if data["roll_id"]:
             role_id = data["roll_id"]
-            matched_user_ids = get_matched_users(guild.members,data["keyward"])
             role:discord.Role = guild.get_role(role_id)
 
             for user_id in matched_user_ids:
@@ -157,6 +138,10 @@ async def check_user_status():
             for member in role.members:
                 if not member.id in matched_user_ids:
                     await member.remove_roles(role)
+        if data["reward_value"]:
+            server_money = ServerMoney()
+            for user_id in matched_user_ids:
+                await server_money.add_money(guild_id=guild.id,user_id=user.id,amount=int(data["reward_value"]),reason="status reward")
 
 def get_matched_users(members:list[discord.Member],keywords):
     matched_users:list[int] = []
@@ -165,5 +150,43 @@ def get_matched_users(members:list[discord.Member],keywords):
             if isinstance(activity,discord.CustomActivity):
                 if activity.name and keywords in activity.name:
                     matched_users.append(member.id)
-    return matched_users                
-client.run(TOKEN)
+    return matched_users
+
+##ここから下は通貨に関するコマンドの実装
+@tree.command(name="balance_set",description="ユーザーの")
+async def balance_set(interaction:discord.Interaction,user:discord.Member,amount:int,reason:str=None):
+    guild = interaction.guild
+    server_money = ServerMoney()
+    await server_money.set_money(guild_id=guild.id,user_id=user.id,amount=amount,reason=reason)
+    await interaction.response.send_message(f"<@{user.id}>の所持ポイントを{amount}に設定しました")
+
+@tree.command(name="balance_view",description="ユーザーの所持ポイントを表示します")
+async def balance_view(interaction:discord.Interaction,user:discord.Member):
+    guild = interaction.guild
+    server_money = ServerMoney()
+    amount = await server_money.get_balance(guild_id=guild.id,user_id=user.id)
+    await interaction.response.send_message(f"<@{user.id}>さんは{amount}ポイント持っていました")
+
+@tree.command(name="balance_add",description="ユーザーの所持ポイントを増やします,負の値を入力すれば減らせます、コマンド実行者の資金は減りません")
+async def balance_add(interaction:discord.Interaction,user:discord.Member,amount:int):
+    guild = interaction.guild
+    server_money = ServerMoney()
+    old_amount = await server_money.get_balance(guild_id=guild.id,user_id=user.id)
+    await server_money.add_money(guild_id=guild.id,user_id=user.id,amount=amount,reason=f"{interaction.user.id}による変更")
+    new_amount = await server_money.get_balance(guild_id=guild.id,user_id=user.id)
+    await interaction.response.send_message(f"<@{user.id}三の所持ポイントは{old_amount}から{new_amount}になりました>")
+
+@tree.command(name="pay",description="ほかのユーザーに所持ポイントを送金することができます")
+async def send_money(interaction:discord.Interaction,to_user:discord.Member,amount:int,):
+    guild = interaction.guild
+    server_money = ServerMoney()
+    try:
+        await server_money.transfer_money(guild.id,interaction.user.id,to_user.id,amount)
+    except:
+        await interaction.followup.send("所持金が足りません",ephemeral=True)
+        return
+    await interaction.response.send_message(f"<@{to_user.id}>に{amount}ポイント送りました")
+
+
+if __name__ == "__main__":
+    client.run(TOKEN)
