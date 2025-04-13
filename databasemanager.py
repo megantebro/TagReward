@@ -26,7 +26,8 @@ class DatabaseManager:
             CREATE TABLE IF NOT EXISTS server_money (
                 guild_id INTEGER NOT NULL,
                 user_id INTEGER NOT NULL,
-                amount INTEGER DEFAULT 0                  
+                amount INTEGER DEFAULT 0,
+                PRIMARY KEY(guild_id,user_id)                 
             )
         """)
 
@@ -39,6 +40,16 @@ class DatabaseManager:
                 reason TEXT,
                 create_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
+        """)
+
+        await self.db.execute("""
+            CREATE TABLE IF NOT EXISTS api_keys (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                api_key TEXT NOT NULL UNIQUE,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
         """)
         await self.db.commit()
 

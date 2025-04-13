@@ -1,11 +1,14 @@
 import discord
 from discord import app_commands
 import databasemanager
+from databasemanager import DatabaseManager
 from discord.ext import tasks
 import json
 import os
 from server_money import ServerMoney
 import threading
+from API import api_manager
+import secrets
 def init_config():
     # config.json が存在しない場合
     CONFIG_FILE = "config.json"
@@ -188,5 +191,23 @@ async def send_money(interaction:discord.Interaction,to_user:discord.Member,amou
     await interaction.response.send_message(f"<@{to_user.id}>に{amount}ポイント送りました")
 
 
+#api関連
+@tree.command(name="get_apikey",description="APIキーを入手できます")
+async def get_apikey(interaction:discord.Interaction):
+    guild_id = interaction.guild.id
+    user_id = interaction.user.id
+    api_key = secrets.token_hex(16)  # 例: 32文字のランダムな文字列
+
+    db = DatabaseManager._instance.db  # シングルトンで取得しているDB接続
+    # APIキーをデータベースに保存する
+    await db.execute("""
+        INSERT INTO api_keys (guild_id, user_id, api_key)
+        VALUES (?, ?, ?)
+        """, (guild_id, user_id, api_key))
+    await db.commit()
+    
+    await interaction.response.send_message(f"あなたのAPIキー: `{api_key}`\nこのキーは他人に渡さないでください", ephemeral=True)
+
 if __name__ == "__main__":
+    threading.Thread(target=api_manager.api_run,daemon=True).start()
     client.run(TOKEN)

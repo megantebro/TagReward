@@ -9,6 +9,7 @@ wheels/
 # Virtual environments
 .venv
 
-.db
+*db
+database.db
 config.json
 sqlite3.exe
