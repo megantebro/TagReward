@@ -183,6 +183,8 @@ async def balance_add(interaction:discord.Interaction,user:discord.Member,amount
 async def send_money(interaction:discord.Interaction,to_user:discord.Member,amount:int,):
     guild = interaction.guild
     server_money = ServerMoney()
+    if amount < 1:
+        await interaction.followup.send("amountには一以上を指定してください")
     try:
         await server_money.transfer_money(guild.id,interaction.user.id,to_user.id,amount)
     except:
