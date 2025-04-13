@@ -13,16 +13,22 @@ class ServerMoney:
         return row[0] if row else 0
 
     async def add_money(self, guild_id: int, user_id: int, amount: int, reason: str = "system"):
-        current = await self.get_balance(guild_id, user_id)
-        if current == 0 and amount >= 0:
-            await self.db.execute(
-                "INSERT INTO server_money (guild_id, user_id, amount) VALUES (?, ?, ?)",
-                (guild_id, user_id, amount)
-            )
-        else:
+        # まず存在するか確認
+        cursor = await self.db.execute(
+            "SELECT 1 FROM server_money WHERE guild_id = ? AND user_id = ?",
+            (guild_id, user_id)
+        )
+        exists = await cursor.fetchone()
+
+        if exists:
             await self.db.execute(
                 "UPDATE server_money SET amount = amount + ? WHERE guild_id = ? AND user_id = ?",
                 (amount, guild_id, user_id)
+            )
+        else:
+            await self.db.execute(
+                "INSERT INTO server_money (guild_id, user_id, amount) VALUES (?, ?, ?)",
+                (guild_id, user_id, amount)
             )
 
         await self.db.execute(
@@ -30,6 +36,7 @@ class ServerMoney:
             (guild_id, user_id, amount, reason)
         )
         await self.db.commit()
+
 
     async def set_money(self, guild_id: int, user_id: int, amount: int, reason: str = "manual set"):
         await self.db.execute(
