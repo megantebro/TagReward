@@ -190,7 +190,35 @@ async def send_money(interaction:discord.Interaction,to_user:discord.Member,amou
         return
     await interaction.response.send_message(f"<@{to_user.id}>に{amount}ポイント送りました")
 
+@tree.command(name="balance_top", description="所持ポイントが多いユーザーを表示します")
+async def balance_top(interaction: discord.Interaction):
+    guild_id = interaction.guild.id
+    top_users = []
+    db = DatabaseManager._instance.db 
+    cursor = await db.execute("""
+        SELECT user_id, amount 
+        FROM server_money 
+        WHERE guild_id = ? 
+        ORDER BY amount DESC 
+        LIMIT 10
+    """, (guild_id,))
+    top_users = await cursor.fetchall()
 
+    # Embed形式で出力
+    embed = discord.Embed(
+        title="🏆 所持ポイントランキング",
+        color=discord.Color.gold()
+    )
+
+    if not top_users:
+        embed.description = "データがまだありません。"
+    else:
+        for idx, (user_id, amount) in enumerate(top_users, start=1):
+            member = interaction.guild.get_member(user_id)
+            name = member.display_name if member else f"ユーザーID:{user_id}"
+            embed.add_field(name=f"{idx}位", value=f"{name} - {amount}pt", inline=False)
+
+        await interaction.response.send_message(embed=embed)
 #api関連
 @tree.command(name="get_apikey",description="APIキーを入手できます")
 async def get_apikey(interaction:discord.Interaction):
