@@ -117,7 +117,7 @@ async def test_check_user_status(interaction:discord.Interaction):
     await interaction.response.send_message("処理が実行されました")
 
 
-@tasks.loop(hours=12)
+@tasks.loop(hours=1)
 async def check_user_status_loop():
     await check_user_status()
 
