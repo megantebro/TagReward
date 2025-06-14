@@ -1,5 +1,5 @@
 import discord
-from discord import app_commands
+from discord import Status, app_commands
 import databasemanager
 from databasemanager import DatabaseManager
 from discord.ext import tasks
@@ -9,34 +9,14 @@ from server_money import ServerMoney
 import threading
 from API import api_manager
 import secrets
-def init_config():
-    # config.json が存在しない場合
-    CONFIG_FILE = "config.json"
-    if not os.path.exists(CONFIG_FILE):
-        print("config.json が見つかりません。新しく作成します。")
-        default_config = {"TOKEN": ""}
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(default_config, f, indent=4)
-        return default_config
+from dotenv import load_dotenv
 
-    # 存在する場合 → 読み込んで返す
-    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-        try:
-            config = json.load(f)
-        except json.JSONDecodeError:
-            print("config.json の形式が不正です。新しく作成しなおします。")
-            config = {"TOKEN": ""}
-            with open(CONFIG_FILE, "w", encoding="utf-8") as wf:
-                json.dump(config, wf, indent=4)
 
-    # "TOKEN" キーがない場合 → 追加して上書き保存
-    if "TOKEN" not in config:
-        print('"TOKEN" キーが見つかりません。追加します。')
-        config["TOKEN"] = ""
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(config, f, indent=4)
-
-    return config
+def get_token():
+    if not load_dotenv():
+        raise FileNotFoundError
+    token = os.getenv("TOKEN")
+    return token
 
 intents = discord.Intents.default()
 intents.presences = True
@@ -44,7 +24,7 @@ intents.members = True
 
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
-TOKEN = init_config()["TOKEN"]
+TOKEN = get_token()
 
 db_manager = None
 @client.event
@@ -139,7 +119,7 @@ async def check_user_status():
                 if role not in user.roles:
                     await user.add_roles(role)
             for member in role.members:
-                if not member.id in matched_user_ids:
+                if not member.id in matched_user_ids and member.status == Status.online:
                     await member.remove_roles(role)
         if data["reward_value"]:
             server_money = ServerMoney()
@@ -177,7 +157,7 @@ async def balance_add(interaction:discord.Interaction,user:discord.Member,amount
     old_amount = await server_money.get_balance(guild_id=guild.id,user_id=user.id)
     await server_money.add_money(guild_id=guild.id,user_id=user.id,amount=amount,reason=f"{interaction.user.id}による変更")
     new_amount = await server_money.get_balance(guild_id=guild.id,user_id=user.id)
-    await interaction.response.send_message(f"<@{user.id}三の所持ポイントは{old_amount}から{new_amount}になりました>")
+    await interaction.response.send_message(f"<@{user.id}>さんの所持ポイントは{old_amount}から{new_amount}になりました")
 
 @tree.command(name="pay",description="ほかのユーザーに所持ポイントを送金することができます")
 async def send_money(interaction:discord.Interaction,to_user:discord.Member,amount:int,):
