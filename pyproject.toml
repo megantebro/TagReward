@@ -10,5 +10,6 @@ dependencies = [
     "dotenv>=0.9.9",
     "fastapi>=0.115.12",
     "flask>=3.1.0",
+    "ipykernel>=6.29.5",
     "uvicorn>=0.34.3",
 ]
