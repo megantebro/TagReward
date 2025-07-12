@@ -11,5 +11,6 @@ dependencies = [
     "fastapi>=0.115.12",
     "flask>=3.1.0",
     "ipykernel>=6.29.5",
+    "jishaku>=2.6.0",
     "uvicorn>=0.34.3",
 ]

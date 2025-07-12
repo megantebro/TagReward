@@ -1,3 +1,5 @@
+import asyncio
+from imaplib import Commands
 import discord
 from discord import Status, app_commands
 import databasemanager
@@ -10,6 +12,7 @@ import threading
 from API import api_manager
 import secrets
 from dotenv import load_dotenv
+from discord.ext import commands
 
 
 def get_token():
@@ -19,11 +22,12 @@ def get_token():
     return token
 
 intents = discord.Intents.default()
+intents.message_content = True
 intents.presences = True
 intents.members = True
 
-client = discord.Client(intents=intents)
-tree = app_commands.CommandTree(client)
+client = commands.Bot("!",intents=intents,help_command=None)
+tree = client.tree
 TOKEN = get_token()
 
 db_manager = None
@@ -31,15 +35,17 @@ db_manager = None
 async def on_ready():
     global db_manager
     print("ready")
-    await tree.sync()
+    
     db_manager = await databasemanager.DatabaseManager.get_instance()
+    await load_extensions()
+    await tree.sync()
     check_user_status_loop.start()
-
+    print(client.user.id)
+    
 
 @tree.command(name="ping",description="ボットが動いているか確認できます")
 async def ping(interaction : discord.Interaction):
     await interaction.response.send_message("ping")
-
 
 @tree.command(name="check_reward_users",description="報酬条件を満たしているユーザーを表示します")
 async def check_reward_users(interaction: discord.Interaction):
@@ -217,6 +223,15 @@ async def get_apikey(interaction:discord.Interaction):
     await db.commit()
     
     await interaction.response.send_message(f"あなたのAPIキー: `{api_key}`\nこのキーは他人に渡さないでください", ephemeral=True)
+
+async def load_extensions():
+    directory = "./extensions"
+    items = os.listdir(directory)
+
+    for item in items:
+        await client.load_extension(f"extensions.{item}")
+
+    await client.load_extension("jishaku")
 
 if __name__ == "__main__":
     threading.Thread(target=api_manager.api_run,daemon=True).start()
